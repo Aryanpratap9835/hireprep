@@ -1,5 +1,6 @@
 export const problem = [
     {
+        id: "two-sum",
         title: "Two Sum",
         topic: "Arrays",
         difficulty: "Easy",
@@ -23,6 +24,7 @@ export const problem = [
     },
 
     {
+        id: "maxium-subarray",
         title: "Maximum Subarray",
         topic: "Arrays",
         difficulty: "Medium",
@@ -41,6 +43,7 @@ export const problem = [
     },
 
     {
+        id: "3sum",
         title: "3Sum",
         topic: "Two Pointers",
         difficulty: "Medium",
@@ -59,6 +62,7 @@ export const problem = [
     },
 
     {
+        id: "coin-change",
         title: "Coin Change",
         topic: "Dynamic Programming",
         difficulty: "Medium",

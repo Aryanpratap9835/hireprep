@@ -1,9 +1,10 @@
 
 "use client";
-
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function InterviewPage() {
+    const router = useRouter();
     const [role, setRole] = useState("SDE Intern");
     const [type, setType] = useState("DSA");
     const [difficulty, setDifficulty] = useState("Medium");
@@ -30,8 +31,9 @@ export default function InterviewPage() {
             const data = await response.json();
 
             console.log("API DATA:", data);
-
             setProblem(data.problem);
+            router.push(`/problem/${data.problem.id}`);
+
         } catch (error) {
             console.error("ERROR:", error);
         }
