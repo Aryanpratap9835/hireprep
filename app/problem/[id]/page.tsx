@@ -8,9 +8,7 @@ export default async function ProblemDetailPage({
 }) {
     const { id } = await params;
 
-    const sol = problem.find(
-        (p) => p.id === id
-    );
+    const sol = problem.find((p) => p.id === id);
 
     if (!sol) {
         return <h1>Problem not found</h1>;
@@ -18,59 +16,39 @@ export default async function ProblemDetailPage({
 
     return (
         <div style={{ padding: "30px" }}>
-
-            {/* Problem Title */}
             <h1>{sol.title}</h1>
 
-            {/* Topic */}
             <h2>{sol.topic}</h2>
 
-            {/* Difficulty */}
             <p>
-                <b>Difficulty:</b>{" "}
-                {sol.difficulty}
+                <b>Difficulty:</b> {sol.difficulty}
             </p>
 
-            {/* Description */}
             <p>{sol.description}</p>
 
-            {/* Examples */}
             <h2>Examples</h2>
 
-            {sol.examples.map(
-                (example, index) => (
-                    <div
-                        key={index}
-                        style={{
-                            marginBottom:
-                                "20px",
-                        }}
-                    >
-                        <h3>
-                            Example{" "}
-                            {index + 1}
-                        </h3>
+            {sol.examples.map((example, index) => (
+                <div
+                    key={index}
+                    style={{ marginBottom: "20px" }}
+                >
+                    <h3>Example {index + 1}</h3>
 
-                        <p>
-                            <b>Input:</b>
-                        </p>
+                    <p>
+                        <b>Input:</b>
+                    </p>
 
-                        <pre>
-                            {example.input}
-                        </pre>
+                    <pre>{example.input}</pre>
 
-                        <p>
-                            <b>Output:</b>
-                        </p>
+                    <p>
+                        <b>Output:</b>
+                    </p>
 
-                        <pre>
-                            {example.output}
-                        </pre>
-                    </div>
-                )
-            )}
+                    <pre>{example.output}</pre>
+                </div>
+            ))}
 
-            {/* Constraints */}
             <h2>Constraints</h2>
 
             <ul>
@@ -83,19 +61,7 @@ export default async function ProblemDetailPage({
                 )}
             </ul>
 
-            {/* Code Editor */}
-            <CodeEditor
-                testCases={
-                    sol.testCases ?? []
-                }
-                functionName={
-                    sol.functionName
-                }
-                parameters={
-                    sol.parameters ?? []
-                }
-            />
-
+            <CodeEditor problem={sol} />
         </div>
     );
 }

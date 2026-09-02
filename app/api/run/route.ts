@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 
 import {
@@ -10,6 +9,216 @@ import {
     JAVA,
 } from "@judge0/judge0-js";
 
+import type { Submission } from "@judge0/judge0-js";
+
+import { problem } from "@/data/problem";
+
+type TestCase = {
+    input: Record<string, any>;
+    expectedOutput: any;
+};
+
+function getJudgeLanguage(language: string) {
+    switch (language) {
+        case "python":
+            return PYTHON;
+
+        case "javascript":
+            return JAVASCRIPT;
+
+        case "typescript":
+            return TYPESCRIPT;
+
+        case "cpp":
+            return CPP;
+
+        case "java":
+            return JAVA;
+
+        default:
+            return null;
+    }
+}
+
+/* =========================
+   PYTHON
+========================= */
+
+function buildPythonCode(
+    code: string,
+    functionName: string,
+    parameters: string[],
+    input: Record<string, any>
+) {
+    const argumentsCode = parameters
+        .map(
+            (parameter) =>
+                `${parameter} = ${JSON.stringify(
+                    input[parameter]
+                )}`
+        )
+        .join("\n");
+
+    const functionCall = parameters.join(", ");
+
+    return `
+${code}
+
+${argumentsCode}
+
+result = ${functionName}(${functionCall})
+
+print(result)
+`;
+}
+
+/* =========================
+   JAVASCRIPT
+========================= */
+
+function buildJavaScriptCode(
+    code: string,
+    functionName: string,
+    parameters: string[],
+    input: Record<string, any>
+) {
+    const argumentsCode = parameters
+        .map(
+            (parameter) =>
+                `const ${parameter} = ${JSON.stringify(
+                    input[parameter]
+                )};`
+        )
+        .join("\n");
+
+    const functionCall = parameters.join(", ");
+
+    return `
+${code}
+
+${argumentsCode}
+
+const result = ${functionName}(${functionCall});
+
+console.log(JSON.stringify(result));
+`;
+}
+
+/* =========================
+   TYPESCRIPT
+========================= */
+
+function buildTypeScriptCode(
+    code: string,
+    functionName: string,
+    parameters: string[],
+    input: Record<string, any>
+) {
+    const argumentsCode = parameters
+        .map(
+            (parameter) =>
+                `const ${parameter} = ${JSON.stringify(
+                    input[parameter]
+                )};`
+        )
+        .join("\n");
+
+    const functionCall = parameters.join(", ");
+
+    return `
+${code}
+
+${argumentsCode}
+
+const result = ${functionName}(${functionCall});
+
+console.log(JSON.stringify(result));
+`;
+}
+
+/* =========================
+   C++
+========================= */
+
+function serializeCppValue(value: any): string {
+    if (Array.isArray(value)) {
+        return `${value.length}\n${value.join(" ")}`;
+    }
+
+    return String(value);
+}
+
+function buildCppInput(
+    parameters: string[],
+    input: Record<string, any>
+) {
+    const parts: string[] = [];
+
+    for (const parameter of parameters) {
+        parts.push(
+            serializeCppValue(input[parameter])
+        );
+    }
+
+    return parts.join("\n") + "\n";
+}
+
+/* =========================
+   JAVA
+========================= */
+
+function serializeJavaValue(value: any): string {
+    if (Array.isArray(value)) {
+        return `${value.length}\n${value.join(" ")}`;
+    }
+
+    return String(value);
+}
+
+function buildJavaInput(
+    parameters: string[],
+    input: Record<string, any>
+) {
+    const parts: string[] = [];
+
+    for (const parameter of parameters) {
+        parts.push(
+            serializeJavaValue(input[parameter])
+        );
+    }
+
+    return parts.join("\n") + "\n";
+}
+
+/* =========================
+   OUTPUT COMPARISON
+========================= */
+
+function compareOutput(
+    actualOutput: string,
+    expectedOutput: any
+) {
+    const actual = actualOutput.trim();
+
+    try {
+        const actualParsed = JSON.parse(actual);
+
+        return (
+            JSON.stringify(actualParsed) ===
+            JSON.stringify(expectedOutput)
+        );
+    } catch {
+        return (
+            actual ===
+            String(expectedOutput).trim()
+        );
+    }
+}
+
+/* =========================
+   POST
+========================= */
+
 export async function POST(request: Request) {
     try {
         const body = await request.json();
@@ -18,15 +227,17 @@ export async function POST(request: Request) {
             code,
             language,
             testCases,
+            problemId,
             functionName,
             parameters,
+            mode = "run",
         } = body;
 
-        // =========================
-        // VALIDATION
-        // =========================
+        /* =========================
+           BASIC VALIDATION
+        ========================= */
 
-        if (!code) {
+        if (!code || typeof code !== "string") {
             return NextResponse.json(
                 {
                     success: false,
@@ -36,327 +247,275 @@ export async function POST(request: Request) {
             );
         }
 
-        if (!Array.isArray(testCases)) {
+        if (!language || typeof language !== "string") {
             return NextResponse.json(
                 {
                     success: false,
-                    error: "Test cases must be an array",
+                    error: "Language is required",
                 },
                 { status: 400 }
             );
         }
 
-        // Function-based languages
+        if (!problemId || typeof problemId !== "string") {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Problem ID is required",
+                },
+                { status: 400 }
+            );
+        }
+
+        if (!functionName) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Function name is required",
+                },
+                { status: 400 }
+            );
+        }
+
+        if (!Array.isArray(parameters)) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Parameters must be an array",
+                },
+                { status: 400 }
+            );
+        }
+
         if (
-            language === "python" ||
-            language === "javascript" ||
-            language === "typescript"
+            mode !== "run" &&
+            mode !== "submit"
         ) {
-            if (!functionName) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Invalid mode",
+                },
+                { status: 400 }
+            );
+        }
+
+        /* =========================
+           FIND PROBLEM ON SERVER
+        ========================= */
+
+        const selectedProblem = problem.find(
+            (p) => p.id === problemId
+        );
+
+        if (!selectedProblem) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Problem not found",
+                },
+                { status: 404 }
+            );
+        }
+
+        /* =========================
+           JUDGE0 LANGUAGE
+        ========================= */
+
+        const judgeLanguage =
+            getJudgeLanguage(language);
+
+        if (!judgeLanguage) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error:
+                        "Unsupported language: " +
+                        language,
+                },
+                { status: 400 }
+            );
+        }
+
+        /* =========================
+           SELECT TEST CASES
+        ========================= */
+
+        let selectedTestCases: TestCase[];
+
+        if (mode === "submit") {
+            // 🔒 Hidden tests stay on server
+            selectedTestCases =
+                selectedProblem.hiddenTestCases;
+        } else {
+            // Public tests can come from frontend
+            if (!Array.isArray(testCases)) {
                 return NextResponse.json(
                     {
                         success: false,
-                        error: "Function name is missing",
+                        error:
+                            "Test cases are required",
                     },
                     { status: 400 }
                 );
             }
 
-            if (!Array.isArray(parameters)) {
-                return NextResponse.json(
-                    {
-                        success: false,
-                        error: "Parameters must be an array",
-                    },
-                    { status: 400 }
-                );
-            }
+            selectedTestCases = testCases;
         }
 
-        // =========================
-        // JUDGE0 LANGUAGE
-        // =========================
-
-        let judgeLanguage;
-
-        switch (language) {
-            case "python":
-                judgeLanguage = PYTHON;
-                break;
-
-            case "javascript":
-                judgeLanguage = JAVASCRIPT;
-                break;
-
-            case "typescript":
-                judgeLanguage = TYPESCRIPT;
-                break;
-
-            case "cpp":
-                judgeLanguage = CPP;
-                break;
-
-            case "java":
-                judgeLanguage = JAVA;
-                break;
-
-            default:
-                return NextResponse.json(
-                    {
-                        success: false,
-                        error: "Unsupported language: " + language,
-                    },
-                    { status: 400 }
-                );
-        }
-
-        // =========================
-        // RESULTS
-        // =========================
+        /* =========================
+           RUN TEST CASES
+        ========================= */
 
         const results = [];
 
-        // =========================
-        // RUN EACH TEST CASE
-        // =========================
-
-        for (let i = 0; i < testCases.length; i++) {
-            const testCase = testCases[i];
+        for (
+            let i = 0;
+            i < selectedTestCases.length;
+            i++
+        ) {
+            const testCase: TestCase =
+                selectedTestCases[i];
 
             const input = testCase.input;
 
-            const expectedOutput = String(
-                testCase.expectedOutput
-            ).trim();
+            const expectedOutput =
+                testCase.expectedOutput;
 
             let sourceCode = "";
+
             let stdin = "";
 
-            // ==================================================
-            // PYTHON
-            // ==================================================
+            /* =========================
+               BUILD CODE
+            ========================= */
 
             if (language === "python") {
-                const argumentsCode = parameters
-                    .map(
-                        (parameter: string) =>
-                            `${parameter} = ${JSON.stringify(
-                                input[parameter]
-                            )
-                            } `
-                    )
-                    .join("\n");
-
-                const functionCall =
-                    parameters.join(", ");
-
-                sourceCode = `
-${code}
-
-${argumentsCode}
-
-result = ${functionName} (${functionCall})
-
-print(result)
-`;
+                sourceCode =
+                    buildPythonCode(
+                        code,
+                        functionName,
+                        parameters,
+                        input
+                    );
             }
 
-            // ==================================================
-            // JAVASCRIPT
-            // ==================================================
-
-            else if (language === "javascript") {
-                const argumentsCode = parameters
-                    .map(
-                        (parameter: string) =>
-                            `const ${parameter} = ${JSON.stringify(
-                                input[parameter]
-                            )}; `
-                    )
-                    .join("\n");
-
-                const functionCall =
-                    parameters.join(", ");
-
-                sourceCode = `
-${code}
-
-${argumentsCode}
-
-const result = ${functionName}(${functionCall});
-
-console.log(JSON.stringify(result));
-`;
+            else if (
+                language === "javascript"
+            ) {
+                sourceCode =
+                    buildJavaScriptCode(
+                        code,
+                        functionName,
+                        parameters,
+                        input
+                    );
             }
 
-            // ==================================================
-            // TYPESCRIPT
-            // ==================================================
-
-            else if (language === "typescript") {
-                const argumentsCode = parameters
-                    .map(
-                        (parameter: string) =>
-                            `const ${parameter} = ${JSON.stringify(
-                                input[parameter]
-                            )}; `
-                    )
-                    .join("\n");
-
-                const functionCall =
-                    parameters.join(", ");
-
-                sourceCode = `
-${code}
-
-${argumentsCode}
-
-const result = ${functionName}(${functionCall});
-
-console.log(JSON.stringify(result));
-`;
+            else if (
+                language === "typescript"
+            ) {
+                sourceCode =
+                    buildTypeScriptCode(
+                        code,
+                        functionName,
+                        parameters,
+                        input
+                    );
             }
-
-            // ==================================================
-            // C++
-            // ==================================================
 
             else if (language === "cpp") {
                 sourceCode = code;
 
-                const nums = input.nums;
-                const target = input.target;
-
-                if (!Array.isArray(nums)) {
-                    throw new Error(
-                        "C++ Two Sum expects input.nums to be an array"
-                    );
-                }
-
                 stdin =
-                    `${nums.length} \n` +
-                    `${nums.join(" ")} \n` +
-                    `${target} \n`;
+                    buildCppInput(
+                        parameters,
+                        input
+                    );
             }
-
-            // ==================================================
-            // JAVA
-            // ==================================================
 
             else if (language === "java") {
                 sourceCode = code;
 
-                const nums = input.nums;
-                const target = input.target;
-
-                if (!Array.isArray(nums)) {
-                    throw new Error(
-                        "Java Two Sum expects input.nums to be an array"
-                    );
-                }
-
                 stdin =
-                    `${nums.length} \n` +
-                    `${nums.join(" ")} \n` +
-                    `${target} \n`;
+                    buildJavaInput(
+                        parameters,
+                        input
+                    );
             }
 
-            // =========================
-            // DEBUG
-            // =========================
+            /* =========================
+               JUDGE0
+            ========================= */
 
-            console.log(
-                `RUNNING TEST CASE ${i + 1} `
-            );
+            const judgeResult =
+                (await run({
+                    source_code: sourceCode,
+                    language: judgeLanguage,
 
-            console.log(
-                "LANGUAGE:",
-                language
-            );
-
-            console.log(
-                "SOURCE CODE:",
-                sourceCode
-            );
-
-            console.log(
-                "STDIN:",
-                stdin
-            );
-
-            // =========================
-            // JUDGE0
-            // =========================
-
-            const result = await run({
-                source_code: sourceCode,
-                language: judgeLanguage,
-
-                ...(stdin
-                    ? { stdin }
-                    : {}),
-            });
-
-            const judgeResult: any = result;
-
-            console.log(
-                "JUDGE0 RESULT:",
-                judgeResult
-            );
-
-            // =========================
-            // OUTPUT
-            // =========================
+                    ...(stdin
+                        ? { stdin }
+                        : {}),
+                })) as Submission;
 
             const actualOutput =
                 judgeResult.stdout?.trim() ?? "";
 
-            // =========================
-            // COMPARE OUTPUT
-            // =========================
+            /* =========================
+               COMPARE OUTPUT
+            ========================= */
 
-            let passed = false;
+            const passed =
+                compareOutput(
+                    actualOutput,
+                    expectedOutput
+                );
 
-            try {
-                const actualParsed =
-                    JSON.parse(actualOutput);
+            /* =========================
+               STATUS
+            ========================= */
 
-                const expectedParsed =
-                    JSON.parse(expectedOutput);
+            let status =
+                "WRONG ANSWER";
 
-                passed =
-                    JSON.stringify(actualParsed) ===
-                    JSON.stringify(expectedParsed);
-            } catch {
-                passed =
-                    actualOutput.trim() ===
-                    expectedOutput.trim();
+            if (
+                judgeResult.compile_output
+            ) {
+                status =
+                    "COMPILATION ERROR";
             }
 
-            // =========================
-            // STATUS
-            // =========================
-
-            let status = "WRONG ANSWER";
-
-            if (judgeResult.compile_output) {
-                status = "COMPILATION ERROR";
-            } else if (judgeResult.stderr) {
-                status = "RUNTIME ERROR";
-            } else if (passed) {
-                status = "ACCEPTED";
+            else if (
+                judgeResult.stderr
+            ) {
+                status =
+                    "RUNTIME ERROR";
             }
 
-            // =========================
-            // SAVE RESULT
-            // =========================
+            else if (passed) {
+                status =
+                    "ACCEPTED";
+            }
+
+            /* =========================
+               RESULT
+            ========================= */
 
             results.push({
                 testCase: i + 1,
 
-                input,
+                // 🔒 Hidden input is NOT returned
+                input:
+                    mode === "run"
+                        ? input
+                        : undefined,
 
-                expectedOutput,
+                // 🔒 Hidden expected output
+                // is NOT returned
+                expectedOutput:
+                    mode === "run"
+                        ? expectedOutput
+                        : undefined,
 
                 actualOutput,
 
@@ -368,23 +527,60 @@ console.log(JSON.stringify(result));
                     judgeResult.stderr ?? "",
 
                 compileOutput:
-                    judgeResult.compile_output ?? "",
+                    judgeResult.compile_output ??
+                    "",
 
                 message:
                     judgeResult.message ?? "",
             });
+
+            /* =========================
+               STOP ON FIRST FAILURE
+            ========================= */
+
+            if (
+                mode === "submit" &&
+                !passed
+            ) {
+                break;
+            }
         }
 
-        // =========================
-        // RESPONSE
-        // =========================
+        /* =========================
+           FINAL VERDICT
+        ========================= */
+
+        const passedCount =
+            results.filter(
+                (result) =>
+                    result.passed
+            ).length;
+
+        const totalTests =
+            selectedTestCases.length;
+
+        const allPassed =
+            passedCount === totalTests;
 
         return NextResponse.json({
             success: true,
+
+            mode,
+
+            verdict:
+                allPassed
+                    ? "ACCEPTED"
+                    : "FAILED",
+
+            passedCount,
+
+            totalTests,
+
             results,
         });
+    }
 
-    } catch (error) {
+    catch (error) {
         console.error(
             "RUN ERROR:",
             error
@@ -405,4 +601,3 @@ console.log(JSON.stringify(result));
         );
     }
 }
-

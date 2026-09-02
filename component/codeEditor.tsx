@@ -1,17 +1,12 @@
 "use client";
-
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
-
-type TestCase = {
-    input: any;
-    expectedOutput: string;
-};
+import { Problem } from "@/data/problem";
 
 type Result = {
     testCase: number;
-    input: any;
-    expectedOutput: string;
+    input?: any;
+    expectedOutput?: any;
     actualOutput: string;
     passed: boolean;
     status: string;
@@ -21,95 +16,84 @@ type Result = {
 };
 
 type CodeEditorProps = {
-    testCases: TestCase[];
-    functioName?: string;
-    functionName?: string;
-    parameters?: string[];
+    problem: Problem;
 };
 
 export default function CodeEditor({
-    testCases,
-    functioName,
-    functionName,
-    parameters = [],
+    problem,
 }: CodeEditorProps) {
-    const actualFunctionName =
-        functionName ?? functioName ?? "";
-
     const [code, setCode] = useState("");
+    const [language, setLanguage] = useState("typescript");
 
-    const [language, setLanguage] =
-        useState("typescript");
+    const [results, setResults] = useState<Result[]>([]);
+    const [verdict, setVerdict] = useState("");
+    const [passedCount, setPassedCount] = useState(0);
+    const [totalTests, setTotalTests] = useState(0);
 
-    const [results, setResults] =
-        useState<Result[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [mode, setMode] = useState<"run" | "submit" | "">("");
 
-    const [loading, setLoading] =
-        useState(false);
+    const handleExecute = async (
+        executionMode: "run" | "submit"
+    ) => {
+        if (!code.trim()) {
+            setError("Please write some code first.");
+            return;
+        }
 
-    const [error, setError] =
-        useState("");
-
-    // =========================
-    // RUN CODE
-    // =========================
-
-    const handleRun = async () => {
         setLoading(true);
+        setMode(executionMode);
+
         setError("");
         setResults([]);
+        setVerdict("");
+        setPassedCount(0);
+        setTotalTests(0);
 
         try {
-            const response = await fetch(
-                "/api/run",
-                {
-                    method: "POST",
+            const response = await fetch("/api/run", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    code,
+                    language,
 
-                    headers: {
-                        "Content-Type":
-                            "application/json",
-                    },
+                    // Public tests
+                    testCases: problem.testCases,
 
-                    body: JSON.stringify({
-                        code,
-                        language,
-                        testCases,
-                        functionName:
-                            actualFunctionName,
-                        parameters,
-                    }),
-                }
-            );
+                    problemId: problem.id,
 
-            const data =
-                await response.json();
+                    functionName: problem.functionName,
+                    parameters: problem.parameters,
 
-            console.log(
-                "API RESPONSE:",
-                data
-            );
+                    mode: executionMode,
+                }),
+            });
 
-            if (
-                !response.ok ||
-                !data.success
-            ) {
+            const data = await response.json();
+
+            console.log("API RESPONSE:", data);
+
+            if (!response.ok || !data.success) {
                 throw new Error(
-                    data.error ||
-                    "Execution failed"
+                    data.error || "Execution failed"
                 );
             }
 
-            if (
-                !Array.isArray(
-                    data.results
-                )
-            ) {
+            if (!Array.isArray(data.results)) {
                 throw new Error(
                     "API did not return results array"
                 );
             }
 
             setResults(data.results);
+            setVerdict(data.verdict || "");
+            setPassedCount(data.passedCount || 0);
+            setTotalTests(data.totalTests || 0);
+
         } catch (error) {
             console.error(
                 "Execution failed:",
@@ -123,34 +107,26 @@ export default function CodeEditor({
             );
         } finally {
             setLoading(false);
+            setMode("");
         }
     };
-
-    // =========================
-    // LANGUAGE CHANGE
-    // =========================
 
     const handleLanguageChange = (
         newLanguage: string
     ) => {
         setLanguage(newLanguage);
 
-        // Clear old output because
-        // the language changed.
         setResults([]);
+        setVerdict("");
+        setPassedCount(0);
+        setTotalTests(0);
         setError("");
     };
 
     return (
-        <div
-            style={{
-                marginTop: "30px",
-            }}
-        >
-            {/* ========================= */}
-            {/* LANGUAGE + RUN */}
-            {/* ========================= */}
+        <div style={{ marginTop: "30px" }}>
 
+            {/* Controls */}
             <div
                 style={{
                     display: "flex",
@@ -165,6 +141,7 @@ export default function CodeEditor({
                             e.target.value
                         )
                     }
+                    disabled={loading}
                 >
                     <option value="typescript">
                         TypeScript
@@ -187,20 +164,32 @@ export default function CodeEditor({
                     </option>
                 </select>
 
+                {/* RUN */}
                 <button
-                    onClick={handleRun}
+                    onClick={() =>
+                        handleExecute("run")
+                    }
                     disabled={loading}
                 >
-                    {loading
+                    {loading && mode === "run"
                         ? "Running..."
                         : "Run"}
                 </button>
+
+                {/* SUBMIT */}
+                <button
+                    onClick={() =>
+                        handleExecute("submit")
+                    }
+                    disabled={loading}
+                >
+                    {loading && mode === "submit"
+                        ? "Submitting..."
+                        : "Submit"}
+                </button>
             </div>
 
-            {/* ========================= */}
-            {/* MONACO */}
-            {/* ========================= */}
-
+            {/* Monaco Editor */}
             <Editor
                 height="500px"
                 language={language}
@@ -218,8 +207,7 @@ export default function CodeEditor({
 
                     automaticLayout: true,
 
-                    scrollBeyondLastLine:
-                        false,
+                    scrollBeyondLastLine: false,
 
                     padding: {
                         top: 10,
@@ -227,88 +215,17 @@ export default function CodeEditor({
                 }}
             />
 
-            {/* ========================= */}
-            {/* TEST CASES */}
-            {/* ========================= */}
-
-            <div
-                style={{
-                    marginTop: "25px",
-                }}
-            >
-                <h2>Test Cases</h2>
-
-                {testCases.map(
-                    (testCase, index) => (
-                        <div
-                            key={index}
-                            style={{
-                                marginTop:
-                                    "15px",
-                                padding: "15px",
-                                border:
-                                    "1px solid #ddd",
-                                borderRadius:
-                                    "8px",
-                            }}
-                        >
-                            <h3>
-                                Test Case{" "}
-                                {index + 1}
-                            </h3>
-
-                            <p>
-                                <b>
-                                    Input:
-                                </b>
-                            </p>
-
-                            <pre>
-                                {typeof testCase.input ===
-                                    "object"
-                                    ? JSON.stringify(
-                                        testCase.input,
-                                        null,
-                                        2
-                                    )
-                                    : String(
-                                        testCase.input
-                                    )}
-                            </pre>
-
-                            <p>
-                                <b>
-                                    Expected:
-                                </b>
-                            </p>
-
-                            <pre>
-                                {
-                                    testCase.expectedOutput
-                                }
-                            </pre>
-                        </div>
-                    )
-                )}
-            </div>
-
-            {/* ========================= */}
-            {/* ERROR */}
-            {/* ========================= */}
-
+            {/* Error */}
             {error && (
                 <div
                     style={{
                         marginTop: "20px",
                         padding: "15px",
-                        border:
-                            "1px solid #ef4444",
+                        border: "1px solid #ef4444",
                         borderRadius: "8px",
                     }}
                 >
-                    <h3>
-                        Execution Error
-                    </h3>
+                    <h3>Execution Error</h3>
 
                     <pre>
                         {error}
@@ -316,47 +233,59 @@ export default function CodeEditor({
                 </div>
             )}
 
-            {/* ========================= */}
-            {/* RESULTS */}
-            {/* ========================= */}
+            {/* Verdict */}
+            {verdict && (
+                <div
+                    style={{
+                        marginTop: "25px",
+                        padding: "20px",
+                        border: "1px solid #ddd",
+                        borderRadius: "8px",
+                    }}
+                >
+                    <h2>
+                        {verdict}
+                    </h2>
 
-            <div
-                style={{
-                    marginTop: "30px",
-                }}
-            >
+                    <p>
+                        Passed:{" "}
+                        <b>
+                            {passedCount}
+                        </b>{" "}
+                        /{" "}
+                        <b>
+                            {totalTests}
+                        </b>
+                    </p>
+                </div>
+            )}
+
+            {/* Test Cases */}
+            <div style={{ marginTop: "30px" }}>
                 <h2>
-                    Execution Results
+                    {mode === "submit"
+                        ? "Submission Results"
+                        : "Test Cases"}
                 </h2>
 
                 {results.length === 0 &&
                     !loading &&
                     !error && (
                         <p>
-                            Run your code to
-                            see the results.
+                            Run or submit your code
+                            to see the results.
                         </p>
                     )}
 
                 {results.map(
-                    (
-                        result,
-                        index
-                    ) => (
+                    (result, index) => (
                         <div
                             key={index}
                             style={{
-                                marginTop:
-                                    "15px",
-
-                                padding:
-                                    "15px",
-
-                                border:
-                                    "1px solid #ddd",
-
-                                borderRadius:
-                                    "8px",
+                                marginTop: "15px",
+                                padding: "15px",
+                                border: "1px solid #ddd",
+                                borderRadius: "8px",
                             }}
                         >
                             <h3>
@@ -364,36 +293,45 @@ export default function CodeEditor({
                                 {result.testCase}
                             </h3>
 
-                            <p>
-                                <b>
-                                    Input:
-                                </b>
-                            </p>
+                            {/* 
+                              Hidden test cases don't send
+                              input/expectedOutput from API.
+                            */}
+                            {result.input !==
+                                undefined && (
+                                    <>
+                                        <p>
+                                            <b>
+                                                Input:
+                                            </b>
+                                        </p>
 
-                            <pre>
-                                {typeof result.input ===
-                                    "object"
-                                    ? JSON.stringify(
-                                        result.input,
-                                        null,
-                                        2
-                                    )
-                                    : String(
-                                        result.input
-                                    )}
-                            </pre>
+                                        <pre>
+                                            {JSON.stringify(
+                                                result.input,
+                                                null,
+                                                2
+                                            )}
+                                        </pre>
+                                    </>
+                                )}
 
-                            <p>
-                                <b>
-                                    Expected:
-                                </b>
-                            </p>
+                            {result.expectedOutput !==
+                                undefined && (
+                                    <>
+                                        <p>
+                                            <b>
+                                                Expected:
+                                            </b>
+                                        </p>
 
-                            <pre>
-                                {
-                                    result.expectedOutput
-                                }
-                            </pre>
+                                        <pre>
+                                            {JSON.stringify(
+                                                result.expectedOutput
+                                            )}
+                                        </pre>
+                                    </>
+                                )}
 
                             <p>
                                 <b>
@@ -406,16 +344,12 @@ export default function CodeEditor({
                                     "No output"}
                             </pre>
 
-                            {/* STATUS */}
-
                             <p>
                                 <b>
                                     Status:
                                 </b>{" "}
                                 {result.status}
                             </p>
-
-                            {/* PASS / FAIL */}
 
                             <p
                                 style={{
@@ -427,8 +361,6 @@ export default function CodeEditor({
                                     ? "✓ Passed"
                                     : "✗ Failed"}
                             </p>
-
-                            {/* STDERR */}
 
                             {result.stderr && (
                                 <div>
@@ -446,8 +378,6 @@ export default function CodeEditor({
                                 </div>
                             )}
 
-                            {/* COMPILER ERROR */}
-
                             {result.compileOutput && (
                                 <div>
                                     <p>
@@ -464,8 +394,6 @@ export default function CodeEditor({
                                 </div>
                             )}
 
-                            {/* MESSAGE */}
-
                             {result.message && (
                                 <div>
                                     <p>
@@ -475,9 +403,7 @@ export default function CodeEditor({
                                     </p>
 
                                     <pre>
-                                        {
-                                            result.message
-                                        }
+                                        {result.message}
                                     </pre>
                                 </div>
                             )}
