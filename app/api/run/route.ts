@@ -11,7 +11,7 @@ import {
 
 import type { Submission } from "@judge0/judge0-js";
 
-import { problem } from "@/data/problem";
+import { prisma } from "@/lib/prisma";
 
 type TestCase = {
     input: Record<string, any>;
@@ -304,9 +304,11 @@ export async function POST(request: Request) {
            FIND PROBLEM ON SERVER
         ========================= */
 
-        const selectedProblem = problem.find(
-            (p) => p.id === problemId
-        );
+        const selectedProblem = await prisma.problem.findUnique({
+            where: {
+                id: problemId,
+            },
+        });
 
         if (!selectedProblem) {
             return NextResponse.json(
@@ -346,7 +348,7 @@ export async function POST(request: Request) {
         if (mode === "submit") {
             // 🔒 Hidden tests stay on server
             selectedTestCases =
-                selectedProblem.hiddenTestCases;
+                (selectedProblem.hiddenTestCases as unknown as TestCase[]) || [];
         } else {
             // Public tests can come from frontend
             if (!Array.isArray(testCases)) {
@@ -425,15 +427,62 @@ export async function POST(request: Request) {
             }
 
             else if (language === "cpp") {
-                sourceCode = code;
+                function cppValue(value: any): string {
+                    if (Array.isArray(value)) {
+                        return `{${value.join(", ")}}`;
+                    }
 
-                stdin =
-                    buildCppInput(
-                        parameters,
-                        input
-                    );
+                    if (typeof value === "string") {
+                        return `"${value.replace(/"/g, '\\"')}"`;
+                    }
+
+                    if (typeof value === "boolean") {
+                        return value ? "true" : "false";
+                    }
+
+                    return String(value);
+                }
+
+                const declarations = parameters
+                    .map((parameter: string) => {
+                        const value = input[parameter];
+
+                        if (Array.isArray(value)) {
+                            return `vector<int> ${parameter} = ${cppValue(value)};`;
+                        }
+
+                        return `int ${parameter} = ${cppValue(value)};`;
+                    })
+                    .join("\n    ");
+
+                const functionArguments = parameters.join(", ");
+
+                sourceCode = `
+#include <bits/stdc++.h>
+using namespace std;
+
+${code}
+
+int main() {
+    Solution solution;
+
+    ${declarations}
+
+    auto result = solution.${functionName}(${functionArguments});
+
+    cout << "[";
+    for (int i = 0; i < result.size(); i++) {
+        if (i > 0) cout << ",";
+        cout << result[i];
+    }
+    cout << "]";
+
+    return 0;
+}
+`;
+
+                stdin = "";
             }
-
             else if (language === "java") {
                 sourceCode = code;
 
@@ -466,6 +515,8 @@ export async function POST(request: Request) {
             ========================= */
 
             const passed =
+                !judgeResult.compile_output &&
+                !judgeResult.stderr &&
                 compareOutput(
                     actualOutput,
                     expectedOutput

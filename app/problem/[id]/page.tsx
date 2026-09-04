@@ -1,5 +1,7 @@
-import { problem } from "@/data/problem";
+
+import { prisma } from "@/lib/prisma";
 import CodeEditor from "@/component/codeEditor";
+import { Problem } from "@/data/problem";
 
 export default async function ProblemDetailPage({
     params,
@@ -8,7 +10,11 @@ export default async function ProblemDetailPage({
 }) {
     const { id } = await params;
 
-    const sol = problem.find((p) => p.id === id);
+    const sol = (await prisma.problem.findUnique({
+        where: {
+            id: id,
+        },
+    })) as unknown as Problem | null;
 
     if (!sol) {
         return <h1>Problem not found</h1>;
@@ -28,7 +34,7 @@ export default async function ProblemDetailPage({
 
             <h2>Examples</h2>
 
-            {sol.examples.map((example, index) => (
+            {sol.examples.map((example: any, index: number) => (
                 <div
                     key={index}
                     style={{ marginBottom: "20px" }}
@@ -53,7 +59,7 @@ export default async function ProblemDetailPage({
 
             <ul>
                 {sol.constraints.map(
-                    (constraint, index) => (
+                    (constraint: string, index: number) => (
                         <li key={index}>
                             {constraint}
                         </li>
@@ -65,3 +71,4 @@ export default async function ProblemDetailPage({
         </div>
     );
 }
+

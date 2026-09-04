@@ -1,23 +1,19 @@
-import { problem } from "@/data/problem";
-import Link from "next/link";
 
-export default function ProblemPage() {
+import { prisma } from "@/lib/prisma";
+import ProblemList from "./problem-list";
+
+export default async function ProblemPage() {
+    const problems = await prisma.problem.findMany();
+
     return (
-        <div>
-            <h1>Problems</h1>
-
-            {problem.map((p) => (
-                <div key={p.id}>
-                    <p>ID: {p.id}</p>
-
-                    <Link href={`/problem/${p.id}`}>
-                        <h2>{p.title}</h2>
-                    </Link>
-
-                    <p>{p.topic}</p>
-                    <p>{p.difficulty}</p>
-                </div>
-            ))}
-        </div>
+        <ProblemList
+            problems={problems.map((problem) => ({
+                id: problem.id,
+                title: problem.title,
+                topic: problem.topic,
+                difficulty: problem.difficulty,
+            }))}
+        />
     );
 }
+
