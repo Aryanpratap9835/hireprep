@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "motion/react";
-import CursorGlow from "../effect/cursor-glow";
 import {
     ArrowRight,
     Brain,
@@ -14,9 +13,6 @@ import {
 export default function Dashboard() {
     return (
         <div className="relative min-h-screen overflow-hidden space-y-8">
-            {/* Cursor Glow */}
-            <CursorGlow />
-
             {/* Hero */}
             <motion.section
                 initial={{ opacity: 0, y: 20 }}
