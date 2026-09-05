@@ -1,4 +1,6 @@
+
 "use client";
+
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Problem } from "@/data/problem";
@@ -34,6 +36,18 @@ export default function CodeEditor({
     const [error, setError] = useState("");
     const [mode, setMode] = useState<"run" | "submit" | "">("");
 
+    // =========================
+    // AI REVIEW STATE
+    // =========================
+
+    const [aiReview, setAiReview] = useState("");
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState("");
+
+    // =========================
+    // RUN / SUBMIT
+    // =========================
+
     const handleExecute = async (
         executionMode: "run" | "submit"
     ) => {
@@ -51,12 +65,18 @@ export default function CodeEditor({
         setPassedCount(0);
         setTotalTests(0);
 
+        // Clear previous AI review
+        setAiReview("");
+        setAiError("");
+
         try {
             const response = await fetch("/api/run", {
                 method: "POST",
+
                 headers: {
                     "Content-Type": "application/json",
                 },
+
                 body: JSON.stringify({
                     code,
                     language,
@@ -93,7 +113,6 @@ export default function CodeEditor({
             setVerdict(data.verdict || "");
             setPassedCount(data.passedCount || 0);
             setTotalTests(data.totalTests || 0);
-
         } catch (error) {
             console.error(
                 "Execution failed:",
@@ -111,6 +130,89 @@ export default function CodeEditor({
         }
     };
 
+    // =========================
+    // AI REVIEW
+    // =========================
+
+    const handleAIReview = async () => {
+        if (!code.trim()) {
+            setAiError(
+                "Please write some code first."
+            );
+            return;
+        }
+
+        if (results.length === 0) {
+            setAiError(
+                "Run or submit your code first."
+            );
+            return;
+        }
+
+        setAiLoading(true);
+        setAiError("");
+        setAiReview("");
+
+        try {
+            const response = await fetch(
+                "/api/ai/review",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+                    },
+
+                    body: JSON.stringify({
+                        problem:
+                            problem.description,
+
+                        code,
+
+                        language,
+
+                        testResults:
+                            results,
+                    }),
+                }
+            );
+
+            const data = await response.json();
+
+            if (
+                !response.ok ||
+                !data.success
+            ) {
+                throw new Error(
+                    data.error ||
+                    "AI review failed"
+                );
+            }
+
+            setAiReview(
+                data.review || ""
+            );
+        } catch (error) {
+            console.error(
+                "AI Review Error:",
+                error
+            );
+
+            setAiError(
+                error instanceof Error
+                    ? error.message
+                    : "AI review failed"
+            );
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    // =========================
+    // LANGUAGE CHANGE
+    // =========================
+
     const handleLanguageChange = (
         newLanguage: string
     ) => {
@@ -120,20 +222,35 @@ export default function CodeEditor({
         setVerdict("");
         setPassedCount(0);
         setTotalTests(0);
+
         setError("");
+
+        setAiReview("");
+        setAiError("");
     };
 
-    return (
-        <div style={{ marginTop: "30px" }}>
+    // =========================
+    // UI
+    // =========================
 
+    return (
+        <div
+            style={{
+                marginTop: "30px",
+            }}
+        >
             {/* Controls */}
+
             <div
                 style={{
                     display: "flex",
                     gap: "10px",
                     marginBottom: "15px",
+                    flexWrap: "wrap",
                 }}
             >
+                {/* LANGUAGE */}
+
                 <select
                     value={language}
                     onChange={(e) =>
@@ -141,7 +258,10 @@ export default function CodeEditor({
                             e.target.value
                         )
                     }
-                    disabled={loading}
+                    disabled={
+                        loading ||
+                        aiLoading
+                    }
                 >
                     <option value="typescript">
                         TypeScript
@@ -165,31 +285,61 @@ export default function CodeEditor({
                 </select>
 
                 {/* RUN */}
+
                 <button
                     onClick={() =>
                         handleExecute("run")
                     }
-                    disabled={loading}
+                    disabled={
+                        loading ||
+                        aiLoading
+                    }
                 >
-                    {loading && mode === "run"
+                    {loading &&
+                        mode === "run"
                         ? "Running..."
                         : "Run"}
                 </button>
 
                 {/* SUBMIT */}
+
                 <button
                     onClick={() =>
-                        handleExecute("submit")
+                        handleExecute(
+                            "submit"
+                        )
                     }
-                    disabled={loading}
+                    disabled={
+                        loading ||
+                        aiLoading
+                    }
                 >
-                    {loading && mode === "submit"
+                    {loading &&
+                        mode === "submit"
                         ? "Submitting..."
                         : "Submit"}
+                </button>
+
+                {/* AI REVIEW */}
+
+                <button
+                    onClick={
+                        handleAIReview
+                    }
+                    disabled={
+                        loading ||
+                        aiLoading ||
+                        results.length === 0
+                    }
+                >
+                    {aiLoading
+                        ? "AI Reviewing..."
+                        : "🤖 AI Review"}
                 </button>
             </div>
 
             {/* Monaco Editor */}
+
             <Editor
                 height="500px"
                 language={language}
@@ -207,7 +357,8 @@ export default function CodeEditor({
 
                     automaticLayout: true,
 
-                    scrollBeyondLastLine: false,
+                    scrollBeyondLastLine:
+                        false,
 
                     padding: {
                         top: 10,
@@ -215,17 +366,23 @@ export default function CodeEditor({
                 }}
             />
 
-            {/* Error */}
+            {/* =========================
+                EXECUTION ERROR
+            ========================= */}
+
             {error && (
                 <div
                     style={{
                         marginTop: "20px",
                         padding: "15px",
-                        border: "1px solid #ef4444",
+                        border:
+                            "1px solid #ef4444",
                         borderRadius: "8px",
                     }}
                 >
-                    <h3>Execution Error</h3>
+                    <h3>
+                        Execution Error
+                    </h3>
 
                     <pre>
                         {error}
@@ -233,13 +390,17 @@ export default function CodeEditor({
                 </div>
             )}
 
-            {/* Verdict */}
+            {/* =========================
+                VERDICT
+            ========================= */}
+
             {verdict && (
                 <div
                     style={{
                         marginTop: "25px",
                         padding: "20px",
-                        border: "1px solid #ddd",
+                        border:
+                            "1px solid #ddd",
                         borderRadius: "8px",
                     }}
                 >
@@ -260,8 +421,15 @@ export default function CodeEditor({
                 </div>
             )}
 
-            {/* Test Cases */}
-            <div style={{ marginTop: "30px" }}>
+            {/* =========================
+                TEST CASES
+            ========================= */}
+
+            <div
+                style={{
+                    marginTop: "30px",
+                }}
+            >
                 <h2>
                     {mode === "submit"
                         ? "Submission Results"
@@ -272,31 +440,39 @@ export default function CodeEditor({
                     !loading &&
                     !error && (
                         <p>
-                            Run or submit your code
-                            to see the results.
+                            Run or submit your
+                            code to see the
+                            results.
                         </p>
                     )}
 
                 {results.map(
-                    (result, index) => (
+                    (
+                        result,
+                        index
+                    ) => (
                         <div
                             key={index}
                             style={{
-                                marginTop: "15px",
-                                padding: "15px",
-                                border: "1px solid #ddd",
-                                borderRadius: "8px",
+                                marginTop:
+                                    "15px",
+                                padding:
+                                    "15px",
+                                border:
+                                    "1px solid #ddd",
+                                borderRadius:
+                                    "8px",
                             }}
                         >
                             <h3>
                                 Test Case{" "}
-                                {result.testCase}
+                                {
+                                    result.testCase
+                                }
                             </h3>
 
-                            {/* 
-                              Hidden test cases don't send
-                              input/expectedOutput from API.
-                            */}
+                            {/* Input */}
+
                             {result.input !==
                                 undefined && (
                                     <>
@@ -316,6 +492,8 @@ export default function CodeEditor({
                                     </>
                                 )}
 
+                            {/* Expected */}
+
                             {result.expectedOutput !==
                                 undefined && (
                                     <>
@@ -333,6 +511,8 @@ export default function CodeEditor({
                                     </>
                                 )}
 
+                            {/* Actual */}
+
                             <p>
                                 <b>
                                     Actual:
@@ -344,12 +524,18 @@ export default function CodeEditor({
                                     "No output"}
                             </pre>
 
+                            {/* Status */}
+
                             <p>
                                 <b>
                                     Status:
                                 </b>{" "}
-                                {result.status}
+                                {
+                                    result.status
+                                }
                             </p>
+
+                            {/* Passed */}
 
                             <p
                                 style={{
@@ -362,11 +548,14 @@ export default function CodeEditor({
                                     : "✗ Failed"}
                             </p>
 
+                            {/* Runtime Error */}
+
                             {result.stderr && (
                                 <div>
                                     <p>
                                         <b>
-                                            Runtime Error:
+                                            Runtime
+                                            Error:
                                         </b>
                                     </p>
 
@@ -378,11 +567,14 @@ export default function CodeEditor({
                                 </div>
                             )}
 
+                            {/* Compilation Error */}
+
                             {result.compileOutput && (
                                 <div>
                                     <p>
                                         <b>
-                                            Compilation Error:
+                                            Compilation
+                                            Error:
                                         </b>
                                     </p>
 
@@ -394,6 +586,8 @@ export default function CodeEditor({
                                 </div>
                             )}
 
+                            {/* Message */}
+
                             {result.message && (
                                 <div>
                                     <p>
@@ -403,7 +597,9 @@ export default function CodeEditor({
                                     </p>
 
                                     <pre>
-                                        {result.message}
+                                        {
+                                            result.message
+                                        }
                                     </pre>
                                 </div>
                             )}
@@ -411,6 +607,63 @@ export default function CodeEditor({
                     )
                 )}
             </div>
+
+            {/* =========================
+                AI ERROR
+            ========================= */}
+
+            {aiError && (
+                <div
+                    style={{
+                        marginTop: "30px",
+                        padding: "20px",
+                        border:
+                            "1px solid #ef4444",
+                        borderRadius: "8px",
+                    }}
+                >
+                    <h3>
+                        AI Review Error
+                    </h3>
+
+                    <p>
+                        {aiError}
+                    </p>
+                </div>
+            )}
+
+            {/* =========================
+                AI REVIEW
+            ========================= */}
+
+            {aiReview && (
+                <div
+                    style={{
+                        marginTop: "30px",
+                        padding: "20px",
+                        border:
+                            "1px solid #ddd",
+                        borderRadius: "8px",
+                    }}
+                >
+                    <h2>
+                        🤖 HirePrep AI Review
+                    </h2>
+
+                    <pre
+                        style={{
+                            whiteSpace:
+                                "pre-wrap",
+                            marginTop:
+                                "15px",
+                            lineHeight:
+                                "1.6",
+                        }}
+                    >
+                        {aiReview}
+                    </pre>
+                </div>
+            )}
         </div>
     );
 }

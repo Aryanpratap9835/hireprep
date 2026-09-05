@@ -1,6 +1,6 @@
 
 import { prisma } from "@/lib/prisma";
-import CodeEditor from "@/component/codeEditor";
+import CodeEditor from "@/components/codeEditor";
 import { Problem } from "@/data/problem";
 
 export default async function ProblemDetailPage({

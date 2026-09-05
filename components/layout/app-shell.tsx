@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import Sidebar from "@/component1/layout/sidebar";
-import Navbar from "@/component1/layout/navbar";
-import AmbientBackground from "@/component1/effect/ambient-background";
-import CursorGlow from "@/component1/effect/cursor-glow";
+import Sidebar from "@/components/layout/sidebar";
+import Navbar from "@/components/layout/navbar";
+import AmbientBackground from "@/components/effect/ambient-background";
+import CursorGlow from "@/components/effect/cursor-glow";
 
 export default function AppShell({
     children,

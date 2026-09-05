@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 
 import {
     run,
@@ -53,9 +54,7 @@ function buildPythonCode(
     const argumentsCode = parameters
         .map(
             (parameter) =>
-                `${parameter} = ${JSON.stringify(
-                    input[parameter]
-                )}`
+                `${parameter} = ${JSON.stringify(input[parameter])}`
         )
         .join("\n");
 
@@ -137,33 +136,6 @@ console.log(JSON.stringify(result));
 }
 
 /* =========================
-   C++
-========================= */
-
-function serializeCppValue(value: any): string {
-    if (Array.isArray(value)) {
-        return `${value.length}\n${value.join(" ")}`;
-    }
-
-    return String(value);
-}
-
-function buildCppInput(
-    parameters: string[],
-    input: Record<string, any>
-) {
-    const parts: string[] = [];
-
-    for (const parameter of parameters) {
-        parts.push(
-            serializeCppValue(input[parameter])
-        );
-    }
-
-    return parts.join("\n") + "\n";
-}
-
-/* =========================
    JAVA
 ========================= */
 
@@ -222,6 +194,21 @@ function compareOutput(
 export async function POST(request: Request) {
     try {
         const body = await request.json();
+
+        // DEBUG
+        console.log("RUN BODY:", body);
+
+        const session = await auth();
+
+        if (!session?.user?.id) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Unauthorized",
+                },
+                { status: 401 }
+            );
+        }
 
         const {
             code,
@@ -304,11 +291,12 @@ export async function POST(request: Request) {
            FIND PROBLEM ON SERVER
         ========================= */
 
-        const selectedProblem = await prisma.problem.findUnique({
-            where: {
-                id: problemId,
-            },
-        });
+        const selectedProblem =
+            await prisma.problem.findUnique({
+                where: {
+                    id: problemId,
+                },
+            });
 
         if (!selectedProblem) {
             return NextResponse.json(
@@ -346,11 +334,10 @@ export async function POST(request: Request) {
         let selectedTestCases: TestCase[];
 
         if (mode === "submit") {
-            // 🔒 Hidden tests stay on server
             selectedTestCases =
-                (selectedProblem.hiddenTestCases as unknown as TestCase[]) || [];
+                (selectedProblem.hiddenTestCases as unknown as TestCase[]) ||
+                [];
         } else {
-            // Public tests can come from frontend
             if (!Array.isArray(testCases)) {
                 return NextResponse.json(
                     {
@@ -376,10 +363,11 @@ export async function POST(request: Request) {
             i < selectedTestCases.length;
             i++
         ) {
-            const testCase: TestCase =
+            const testCase =
                 selectedTestCases[i];
 
-            const input = testCase.input;
+            const input =
+                testCase.input;
 
             const expectedOutput =
                 testCase.expectedOutput;
@@ -426,39 +414,83 @@ export async function POST(request: Request) {
                     );
             }
 
+            /* =========================
+               C++
+            ========================= */
+
             else if (language === "cpp") {
-                function cppValue(value: any): string {
+                function cppValue(
+                    value: any
+                ): string {
                     if (Array.isArray(value)) {
                         return `{${value.join(", ")}}`;
                     }
 
-                    if (typeof value === "string") {
-                        return `"${value.replace(/"/g, '\\"')}"`;
+                    if (
+                        typeof value === "string"
+                    ) {
+                        return `"${value.replace(
+                            /"/g,
+                            '\\"'
+                        )}"`;
                     }
 
-                    if (typeof value === "boolean") {
-                        return value ? "true" : "false";
+                    if (
+                        typeof value === "boolean"
+                    ) {
+                        return value
+                            ? "true"
+                            : "false";
                     }
 
                     return String(value);
                 }
 
-                const declarations = parameters
-                    .map((parameter: string) => {
-                        const value = input[parameter];
+                const declarations =
+                    parameters
+                        .map(
+                            (
+                                parameter: string
+                            ) => {
+                                const value =
+                                    input[
+                                    parameter
+                                    ];
 
-                        if (Array.isArray(value)) {
-                            return `vector<int> ${parameter} = ${cppValue(value)};`;
-                        }
+                                if (
+                                    Array.isArray(
+                                        value
+                                    )
+                                ) {
+                                    return `vector<int> ${parameter} = ${cppValue(
+                                        value
+                                    )};`;
+                                }
 
-                        return `int ${parameter} = ${cppValue(value)};`;
-                    })
-                    .join("\n    ");
+                                return `int ${parameter} = ${cppValue(
+                                    value
+                                )};`;
+                            }
+                        )
+                        .join("\n    ");
 
-                const functionArguments = parameters.join(", ");
+                const functionArguments =
+                    parameters.join(", ");
 
                 sourceCode = `
-#include <bits/stdc++.h>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <map>
+#include <set>
+#include <queue>
+#include <stack>
+#include <cmath>
+#include <climits>
+
 using namespace std;
 
 ${code}
@@ -470,12 +502,7 @@ int main() {
 
     auto result = solution.${functionName}(${functionArguments});
 
-    cout << "[";
-    for (int i = 0; i < result.size(); i++) {
-        if (i > 0) cout << ",";
-        cout << result[i];
-    }
-    cout << "]";
+    cout << result << endl;
 
     return 0;
 }
@@ -483,6 +510,11 @@ int main() {
 
                 stdin = "";
             }
+
+            /* =========================
+               JAVA
+            ========================= */
+
             else if (language === "java") {
                 sourceCode = code;
 
@@ -555,14 +587,11 @@ int main() {
             results.push({
                 testCase: i + 1,
 
-                // 🔒 Hidden input is NOT returned
                 input:
                     mode === "run"
                         ? input
                         : undefined,
 
-                // 🔒 Hidden expected output
-                // is NOT returned
                 expectedOutput:
                     mode === "run"
                         ? expectedOutput
@@ -612,6 +641,110 @@ int main() {
 
         const allPassed =
             passedCount === totalTests;
+
+        /* =========================
+           UPDATE USER PROGRESS
+        ========================= */
+
+        if (
+            mode === "submit" &&
+            allPassed
+        ) {
+            console.log(
+                "SUBMIT PASSED:",
+                {
+                    userId:
+                        session.user.id,
+                    problemId,
+                }
+            );
+
+            const existingProgress =
+                await prisma.problemProgress.findUnique(
+                    {
+                        where: {
+                            userId_problemId: {
+                                userId:
+                                    session.user.id,
+                                problemId,
+                            },
+                        },
+                    }
+                );
+
+            console.log(
+                "EXISTING PROGRESS:",
+                existingProgress
+            );
+
+            if (
+                !existingProgress?.solved
+            ) {
+                await prisma.problemProgress.upsert(
+                    {
+                        where: {
+                            userId_problemId: {
+                                userId:
+                                    session.user.id,
+                                problemId,
+                            },
+                        },
+
+                        update: {
+                            solved: true,
+
+                            attempts: {
+                                increment: 1,
+                            },
+
+                            solvedAt:
+                                new Date(),
+                        },
+
+                        create: {
+                            userId:
+                                session.user.id,
+
+                            problemId,
+
+                            solved: true,
+
+                            attempts: 1,
+
+                            solvedAt:
+                                new Date(),
+                        },
+                    }
+                );
+
+                console.log(
+                    "PROBLEM PROGRESS UPDATED"
+                );
+
+                await prisma.userProgress.update(
+                    {
+                        where: {
+                            userId:
+                                session.user.id,
+                        },
+
+                        data: {
+                            problemsSolved: {
+                                increment: 1,
+                            },
+                        },
+                    }
+                );
+
+                console.log(
+                    "PROBLEMS SOLVED INCREMENTED"
+                );
+            } else {
+                console.log(
+                    "PROBLEM ALREADY SOLVED"
+                );
+            }
+        }
 
         return NextResponse.json({
             success: true,

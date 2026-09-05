@@ -5,6 +5,7 @@ import { Bell, Menu, Terminal } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
+
 const TITLES: Record<string, string> = {
     "/": "Dashboard",
     "/problem": "Coding Problems",
