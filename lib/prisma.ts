@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/client/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 function getDatabaseUrl(): string | undefined {
