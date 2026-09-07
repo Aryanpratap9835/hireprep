@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { kiwi } from "@/lib/kiwi";
+import { getKiwiClient } from "@/lib/kiwi";
 
 export async function POST(req: NextRequest) {
     try {
@@ -148,7 +148,7 @@ Now perform the review.
 `;
 
         const response =
-            await kiwi.chat.completions.create({
+            await getKiwiClient().chat.completions.create({
                 model: "auto",
 
                 temperature: 0.1,

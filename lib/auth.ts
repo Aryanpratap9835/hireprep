@@ -3,7 +3,15 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 
+const authSecret =
+    process.env.AUTH_SECRET ??
+    process.env.NEXTAUTH_SECRET ??
+    (process.env.NODE_ENV !== "production"
+        ? "hireprep-preview-development-secret-change-in-production"
+        : undefined);
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
+    secret: authSecret,
     adapter: PrismaAdapter(prisma),
 
     providers: [

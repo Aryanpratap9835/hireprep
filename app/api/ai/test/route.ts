@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { kiwi } from "@/lib/kiwi";
+import { getKiwiClient } from "@/lib/kiwi";
 
 export async function GET() {
     try {
-        const response = await kiwi.chat.completions.create({
+        const response = await getKiwiClient().chat.completions.create({
             model: "auto",
             messages: [
                 {
