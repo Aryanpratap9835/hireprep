@@ -1,4 +1,5 @@
 
+import type { Problem } from "@/data/problem";
 import { prisma } from "@/lib/prisma";
 import ProblemList from "./problem-list";
 
