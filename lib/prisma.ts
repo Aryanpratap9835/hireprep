@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 function getDatabaseUrl(): string | undefined {
-    const url = process.env.DATABASE_URL;
+    let url = process.env.DATABASE_URL;
     if (!url) return undefined;
     if (url.startsWith("prisma+postgres://")) {
         try {
@@ -10,11 +10,16 @@ function getDatabaseUrl(): string | undefined {
             const apiKey = parsed.searchParams.get("api_key");
             if (apiKey) {
                 const decoded = JSON.parse(Buffer.from(apiKey, "base64").toString("utf-8"));
-                if (decoded.databaseUrl) return decoded.databaseUrl;
+                if (decoded.databaseUrl) {
+                    url = decoded.databaseUrl;
+                }
             }
         } catch {
-            return url;
+            // Keep original url
         }
+    }
+    if (url && url.includes("@localhost:")) {
+        url = url.replace("@localhost:", "@127.0.0.1:");
     }
     return url;
 }

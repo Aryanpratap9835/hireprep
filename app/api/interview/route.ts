@@ -1,48 +1,87 @@
-
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+    getQuestionsForInterview,
+    InterviewCategory,
+    InterviewDifficulty,
+    TargetRole,
+} from "@/data/interview-questions";
 
 export async function POST(request: Request) {
     try {
         const body = await request.json();
+        const {
+            role = "SDE Intern",
+            type = "DSA",
+            difficulty = "Medium",
+            count = 3,
+        } = body as {
+            role: TargetRole;
+            type: InterviewCategory;
+            difficulty: InterviewDifficulty;
+            count?: number;
+        };
 
-        const { role, type, difficulty } = body;
+        // Handle DSA interview
+        if (type === "DSA") {
+            const matchingProblems = await prisma.problem.findMany({
+                where: {
+                    difficulty: difficulty,
+                },
+            });
 
-        if (type !== "DSA") {
+            const problemsList = matchingProblems.length > 0 ? matchingProblems : await prisma.problem.findMany();
+
+            if (problemsList.length === 0) {
+                return NextResponse.json(
+                    { message: "No coding problems available in database." },
+                    { status: 404 }
+                );
+            }
+
+            const randomProblem = problemsList[Math.floor(Math.random() * problemsList.length)];
+
             return NextResponse.json({
-                message: "Currently only DSA interviews are available.",
+                success: true,
+                role,
+                type,
+                difficulty,
+                problem: randomProblem,
+                mode: "DSA",
             });
         }
 
-        const matchingProblems = await prisma.problem.findMany({
-            where: {
-                difficulty: difficulty,
-            },
+        // Handle CS Fundamentals, Behavioral, or Mixed interview
+        const questions = getQuestionsForInterview({
+            type,
+            role,
+            difficulty,
+            count: Number(count) || 3,
         });
 
-        if (matchingProblems.length === 0) {
-            return NextResponse.json({
-                message: "No problems available for this difficulty.",
+        // Also fetch a fallback DSA problem if Mixed
+        let dsaProblem = null;
+        if (type === "Mixed") {
+            const dsaList = await prisma.problem.findMany({
+                where: { difficulty },
             });
+            dsaProblem = dsaList.length > 0 ? dsaList[Math.floor(Math.random() * dsaList.length)] : null;
         }
 
-        const randomProblem =
-            matchingProblems[
-            Math.floor(Math.random() * matchingProblems.length)
-            ];
-
         return NextResponse.json({
+            success: true,
             role,
             type,
-            problem: randomProblem,
+            difficulty,
+            questions,
+            dsaProblem,
+            mode: "INTERACTIVE",
         });
     } catch (error) {
         console.error("Interview API error:", error);
-
         return NextResponse.json(
-            { message: "Something went wrong." },
+            { success: false, message: "Failed to generate interview session." },
             { status: 500 }
         );
     }
 }
-

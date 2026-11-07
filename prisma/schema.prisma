@@ -17,6 +17,7 @@ model User {
   sessions      Session[]
   progress UserProgress?
   problemProgress ProblemProgress[]
+  aiReviews AIReview[]
 }
 
 model Account {
@@ -76,6 +77,7 @@ model Problem {
   parameters      String[]
   testCases       Json
   progress ProblemProgress[]
+  aiReviews AIReview[]
 }
 model UserProgress {
   id             String   @id @default(cuid())
@@ -101,4 +103,20 @@ model ProblemProgress {
   problem   Problem   @relation(fields: [problemId], references: [id], onDelete: Cascade)
 
   @@unique([userId, problemId])
+}
+model AIReview {
+  id        String   @id @default(cuid())
+  userId    String
+  problemId String
+
+  code      String
+  language  String
+  verdict   String
+
+  review    Json
+
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
 }
