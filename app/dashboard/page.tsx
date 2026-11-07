@@ -1,7 +1,9 @@
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Dashboard from "@/components/dashboard/dashboard";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
     const session = await auth();

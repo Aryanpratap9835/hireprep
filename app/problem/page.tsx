@@ -2,6 +2,8 @@
 import { prisma } from "@/lib/prisma";
 import ProblemList from "./problem-list";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProblemPage() {
     const problems = await prisma.problem.findMany();
 
